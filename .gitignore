@@ -1,0 +1,31 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python build and cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Test and notebook state
+.pytest_cache/
+.ipynb_checkpoints/
+
+# LaTeX build artefacts
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+
+# Market data: 948 MB here, and redistributable only from the source. The whole
+# directory, not just data/binance, so a stray file cannot slip into a commit.
+data/
+!data/README.md

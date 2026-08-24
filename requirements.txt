@@ -1,0 +1,19 @@
+# Pinned floors only; the authoritative list is pyproject.toml.
+#   pip install -e ".[dev]"
+#
+# The simulator now uses gymnasium (the legacy `gym` name is taken by src/gym).
+numpy>=1.24
+scipy>=1.11
+pandas>=2.0
+matplotlib>=3.8
+seaborn>=0.13
+gymnasium>=0.29
+torch>=2.0
+stable-baselines3>=2.3
+sb3-contrib>=2.3
+tqdm>=4.66
+
+# dev
+pytest>=8.0
+ipykernel>=6.29
+notebook>=7.0

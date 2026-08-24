@@ -1,0 +1,270 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,array,enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\setlist{itemsep=1pt,topsep=3pt}
+\newcommand{\dt}{\Delta t}
+\newcommand{\thnull}{\theta_{\mathrm{null}}}
+\title{\bfseries Deep RL for market making\\[2pt]\large Specification}
+\author{}\date{\today}
+\begin{document}\maketitle\vspace{-2.2em}
+
+% ---------------------------------------------------------------
+\section{The question}
+
+A market maker quotes a bid and an ask around a mid price, earns the spread when
+someone trades against a quote, and carries the resulting inventory at risk. When
+the world is simple enough, the optimal quotes are known in closed form. When it
+is not, they are not.
+
+This project builds a family of simulated worlds $\{\mathcal{M}_\theta\}$ with one
+distinguished point $\thnull$ where the closed form is exactly optimal, and asks a
+single question:
+
+\begin{quote}
+As the world moves away from $\thnull$ along one coefficient at a time, how much
+does a reinforcement learning agent gain over the closed form, and which piece of
+information buys that gain?
+\end{quote}
+
+The point of the design is that the answer is falsifiable. At $\thnull$ the agent
+must \emph{recover} the closed form and beat nothing; anywhere else, a gain is
+only credited when a blind agent of the same size and budget does not obtain it.
+
+% ---------------------------------------------------------------
+\section{The criterion}
+
+Let $S_t$ be the mid price, $q_t$ the inventory in units, and $X_t$ the cash.
+Write $W_t = X_t + q_t S_t$ for the mark-to-market wealth. Over one step of length
+$\dt$ the reward is
+
+\begin{equation}
+  r_t \;=\; \Delta W_t \;-\; \phi\, q_t^2\, \dt ,
+  \qquad
+  \Delta W_t \;=\; \underbrace{\textstyle\sum \delta^{\pm}}_{\text{spread}}
+  \;+\; \underbrace{q_t\,\Delta S_t}_{\text{carry}}
+  \;+\; \underbrace{\Delta q_t\,\Delta S_t}_{\text{adverse}} ,
+\end{equation}
+
+where $\delta^{+}$ and $\delta^{-}$ are the half-spreads quoted on the ask and bid
+side, and $\phi \ge 0$ prices inventory risk. The three-term decomposition is an
+identity, not an approximation, and the simulator asserts it at every step to
+$10^{-9}$: it is what makes ``the agent earned more spread'' and ``the agent
+suffered less adverse selection'' separately measurable rather than rhetorical.
+
+An episode runs for $T$ with $n = T/\dt$ steps and inventory clipped to
+$|q| \le Q$. The agent's objective is $\mathbb{E}\big[\sum_t r_t\big]$, undiscounted.
+
+% ---------------------------------------------------------------
+\section{The null world and its closed form}
+
+At $\thnull$ market orders arrive on each side as a Poisson process of intensity
+$\lambda$, a quote at distance $\delta$ is filled with probability
+$e^{-\kappa\delta}$, and the mid is a driftless geometric Brownian motion. Cartea
+and Jaimungal solve this exactly. Writing $h_q(t)$ for the value function's
+inventory term, the optimal half-spreads are
+
+\begin{equation}
+  \delta^{*\pm} \;=\; \frac{1}{\kappa} \;+\; h_q \;-\; h_{q\mp1},
+  \qquad
+  \omega = e^{\kappa h} \text{ solves } \omega' = A\omega,
+  \quad
+  A_{q,q} = \kappa\phi q^2,
+  \quad
+  A_{q,q\pm1} = -\lambda/e .
+\end{equation}
+
+Two properties of this solution drive the whole design. It is \textbf{one-sided
+symmetric}: the skew depends on $q$ and on time remaining, never on anything the
+market is doing. And $\sigma$ does not appear in it at all --- the carry term
+$q\,\mathrm{d}S$ is a martingale, so volatility never enters the Hamilton--Jacobi
+equation and inventory risk is carried entirely by $\phi$.
+
+\paragraph{Geometric mid.} The log mid evolves as
+$\mathrm{d}\log S = (\alpha - \tfrac12\sigma^2)\mathrm{d}t + \sigma\,\mathrm{d}W$.
+The It\^o term is what keeps $\mathbb{E}[\mathrm{d}S] = 0$ when $\alpha = 0$; without
+it the mid drifts up and a long maker earns a spurious carry. Because $\sigma$
+multiplies the \emph{log} increment it is a return per unit $\sqrt{\text{time}}$,
+dimensionless, while $\kappa$ is in $1/\text{price}$ and $\delta$ is a price. The
+price level $S_0$ therefore carries the scale, and the exact invariance is
+\begin{equation}
+  (S_0,\ \kappa,\ \phi) \;\longmapsto\; (aS_0,\ \kappa/a,\ a\phi),
+  \qquad \sigma,\ \varepsilon,\ \zeta_{\mathrm{mkt}} \text{ unchanged},
+\end{equation}
+under which the criterion scales by $a$ and every ratio is unchanged. This is
+verified numerically over a $625\times$ range in $S_0$.
+
+% ---------------------------------------------------------------
+\section{Variables}
+
+\begin{center}\small
+\begin{tabular}{@{}llp{9.4cm}@{}}
+\toprule
+symbol & unit & meaning \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{State and control}}\\
+$S_t$ & price & mid price; geometric, so strictly positive \\
+$q_t$ & units & inventory, clipped to $|q|\le Q$ \\
+$\delta^{\pm}$ & price & half-spread quoted on the ask / bid side \\
+$\phi$ & price/unit$^2$/time & inventory penalty in the criterion \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Mid price and volatility}}\\
+$\sigma$ & return & volatility of the log mid; $10^{-4}$ is one basis point \\
+$\sigma_\sigma$ & --- & vol-of-vol of $\log\sigma$; $0$ leaves $\sigma$ constant \\
+$\xi_\sigma$ & 1/time & mean-reversion speed of $\log\sigma$ \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Short-term drift (adverse selection)}}\\
+$\alpha_t$ & return/time & transient drift of the log mid \\
+$\zeta$ & 1/time & mean-reversion speed of $\alpha$ \\
+$\varepsilon$ & return & jump in $\alpha$ per informed market order \\
+$\rho$ & prob. & share of market orders that are informed \\
+$\sigma_\alpha$ & return & diffusive noise of $\alpha$ \\
+$\zeta_{\mathrm{mkt}}$ & return & \emph{permanent} log-mid jump per informed order \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Order flow}}\\
+$\lambda^{\pm}_t$ & 1/time & market-order intensity on each side \\
+$\bar\lambda$ & 1/time & baseline intensity \\
+$\beta$ & 1/time & decay of the excitation \\
+$\eta,\ \nu$ & 1/time & self- and cross-excitation \\
+$br$ & --- & branching ratio $\rho(\eta+\nu)/\beta$; must stay below 1 \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Book depth}}\\
+$\kappa^{\pm}_t$ & 1/price & fill-law decay; $1/\kappa$ is the natural half-spread \\
+$\vartheta$ & 1/price & long-run level of $\kappa$ \\
+$\xi$ & 1/time & mean-reversion speed of $\kappa$ \\
+$\eta_\kappa,\ \nu_\kappa$ & 1/price & self- and cross-excitation of depth \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Own impact}}\\
+$\gamma_{\mathrm{self}}$ & 1/price & temporary depth degradation after our own fill \\
+$\zeta_{\mathrm{perm}}$ & return & permanent log-mid move caused by our own fill \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two diagnostics gate every world. \emph{Economic coherence}
+$\sigma S_0 \mathbb{E}[\kappa]\sqrt{e/\mathbb{E}[\lambda]}$ compares the half-spread
+earned per round trip against the price move suffered while holding; it is
+expected to be of order 1, and far above it abstaining wins. \emph{Step
+resolution} $\sigma S_0\sqrt{\dt}\,\vartheta$ is the fraction of a half-spread the
+price covers in one step, and must stay small or the discretisation, not the
+economics, sets the answer.
+
+% ---------------------------------------------------------------
+\section{Simulator layers}
+
+Each layer adds one mechanism and can be switched off, which is what makes
+$\thnull$ reachable exactly rather than approximately.
+
+\begin{center}\small
+\begin{tabular}{@{}clll@{}}
+\toprule
+layer & object & off at $\thnull$ when & mechanism \\
+\midrule
+1 & mid price & --- & geometric Brownian motion \\
+2 & short-term drift & $\varepsilon=\rho=\zeta_{\mathrm{mkt}}=0$ & flow-driven $\alpha$, transient and permanent \\
+3 & order flow & $\eta=\nu=0$ & mutually exciting Hawkes intensities \\
+4 & book depth & $\eta_\kappa=\nu_\kappa=0$ & flow-driven $\kappa^\pm$ \\
+5 & volatility & $\sigma_\sigma=0$ & log-OU stochastic volatility \\
+6 & own impact & $\gamma_{\mathrm{self}}=\zeta_{\mathrm{perm}}=0$ & our own fills move depth and mid \\
+7 & execution & --- & coupled thinning of the same market orders \\
+8 & environment & --- & observation, reward, episode \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Layer 7 is the one that makes adverse selection exist. A market order is drawn
+once and then drives \emph{both} the fill indicator
+$F^{\pm} = \mathbb{1}\{\mathrm{Bin}(n^{\pm}, e^{-\kappa\delta}) \ge 1\}$ and the jump
+in $\alpha$. Drawing them separately would leave a world where getting filled
+tells the maker nothing, and every result about information would be an artefact.
+
+% ---------------------------------------------------------------
+\section{Relaxation axes}
+
+One coefficient at a time, from $\thnull$ outwards. Each axis names the
+observation block that could in principle carry its information.
+
+\begin{center}\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+axis & coefficients & mechanism & block \\
+\midrule
+1 & $\sigma_\sigma$ & stochastic volatility & regime \\
+2 & $\eta,\nu$ & flow clustering & regime \\
+3 & $\varepsilon,\rho$ & adverse selection, transient & signal \\
+3d & $\zeta_{\mathrm{mkt}},\rho$ & adverse selection, permanent & signal \\
+4 & $\eta_\kappa,\nu_\kappa$ & reactive depth & book \\
+5 & $k_{\mathrm{lat}}$ & quote latency (a \texttt{Config} choice) & --- \\
+6 & $\gamma_{\mathrm{self}}$ & own-order impact & book \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Axes 1 and 2 must show the closed form \emph{holding}. Its solution does not use
+$\sigma$, and it uses $\lambda$ only through its level, so stochastic volatility
+and mean-preserving clustering should cost it little. If it collapses there, that
+is an implementation defect and not a discovery --- which is why those two axes
+are run first and also serve as negative controls for the bias correction.
+
+% ---------------------------------------------------------------
+\section{What makes a measured gain credible}
+
+The protocol is identical on every axis, and each item exists to kill one specific
+alternative explanation.
+
+\begin{enumerate}[label=\arabic*.]
+\item \textbf{The world is checked before the agents run.} Measured moments ---
+  $\mathbb{E}[\lambda]$, $\mathbb{E}[\kappa]$, the intensity autocorrelation, the
+  markout curve --- against their analytical targets. An axis whose moments are
+  wrong tests nothing.
+\item \textbf{Common random numbers.} Every policy in a $(\phi,\text{seed})$ cell
+  sees the same drawn world and the same market orders, so all comparisons are
+  paired. The script verifies this itself: baseline criteria must be identical to
+  the bit across observation layouts, or the observation is perturbing the world.
+\item \textbf{Three closed forms, not one.} At the true $\bar\lambda$, at the
+  stationary $\mathbb{E}[\lambda]$, and refitted on a rolling window. The first gap
+  isolates a \emph{level} error, which a practitioner would simply re-estimate
+  away; what remains is blindness to the \emph{state}, and only that part is
+  available to an agent.
+\item \textbf{A blind agent of the same size and budget.} ``The agent beats the
+  closed form'' proves nothing if an agent seeing only $(q,t)$ beats it too, since
+  it can gain by adapting to the inventory bound rather than to the regime. The
+  reported quantity is the informed-minus-blind gap.
+\item \textbf{Two budgets.} Adding an observation block raises the parameter count
+  and degrades the optimisation, so at equal budget an informed agent can lose for
+  a reason unrelated to information. Each axis is run at two budgets and the
+  gradient quality is reported alongside.
+\item \textbf{Baselines other than the closed form.} A random quoter and fixed
+  half-spreads at $0.5/\kappa$, $1/\kappa$ and $2/\kappa$, so the reader can see
+  what the problem is worth before any optimisation.
+\end{enumerate}
+
+Results are reported in financial units --- basis points of notional, basis points
+per fill, Sharpe ratio per episode and annualised, maximum drawdown, hit rate ---
+alongside the raw criterion, so that the size of a gain is legible without knowing
+the model's internal scale.
+
+% ---------------------------------------------------------------
+\section{Deliverables}
+
+\begin{enumerate}[label=\arabic*.]
+\item A layered simulator with $\thnull$ reachable exactly, every layer separately
+  switchable, and the reward identity asserted at each step.
+\item An independent implementation of the Cartea--Jaimungal solution, validated
+  at $\thnull$ against a policy search over the same family.
+\item Two learners --- PPO and an evolution strategy --- sharing the environment,
+  the action space and the evaluation.
+\item Per-axis measurement tables, with the negative controls and the bias
+  correction they imply.
+\item A calibration against public Binance data, stating which coefficients it
+  identifies and which it cannot.
+\item Figures, a notebook and an interactive dashboard reproducing the reported
+  numbers.
+\end{enumerate}
+
+\end{document}

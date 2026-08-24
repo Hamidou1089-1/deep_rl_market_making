@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deep-rl-market-making"
+version = "0.1.0"
+description = "Extensions to mbt_gym for measuring a learned market maker against the closed form"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "gymnasium>=0.29",
+    "torch>=2.0",
+    "stable-baselines3>=2.3",
+    "sb3-contrib>=2.3",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ipykernel>=6.29", "notebook>=7.0"]
+
+# src layout. The importable packages are the four mbt_gym subpackages, taken
+# out of their parent and placed directly under src/, so the imports read
+# `from gym.TradingEnvironment import ...` rather than `from mbt_gym.gym...`.
+# Consequence, stated because it is the cost of this choice: the files are no
+# longer byte-identical to upstream, so a diff against mbt_gym no longer
+# isolates our extensions. Their licence stays at src/LICENSE.mbt_gym.
+#
+# The package named `gym` collides with the legacy `gym` LIBRARY, which this
+# code used to import. That is why every `import gym` is now
+# `import gymnasium as gym`: it frees the name, and it makes the spaces
+# gymnasium-native, which is what stable-baselines3 v2 requires anyway.
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["src"]
