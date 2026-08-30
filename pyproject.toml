@@ -24,19 +24,13 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ipykernel>=6.29", "notebook>=7.0"]
 
-# src layout. The importable packages are the four mbt_gym subpackages, taken
-# out of their parent and placed directly under src/, so the imports read
-# `from gym.TradingEnvironment import ...` rather than `from mbt_gym.gym...`.
-# Consequence, stated because it is the cost of this choice: the files are no
-# longer byte-identical to upstream, so a diff against mbt_gym no longer
-# isolates our extensions. Their licence stays at src/LICENSE.mbt_gym.
-#
-# The package named `gym` collides with the legacy `gym` LIBRARY, which this
-# code used to import. That is why every `import gym` is now
-# `import gymnasium as gym`: it frees the name, and it makes the spaces
-# gymnasium-native, which is what stable-baselines3 v2 requires anyway.
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["src"]
+# the repo names its test modules testXxx.py, which pytest does not collect by default
+python_files = ["test*.py"]
+python_classes = ["test*", "Test*"]
+pythonpath = ["src"]

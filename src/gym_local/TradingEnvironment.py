@@ -8,17 +8,17 @@ import numpy as np
 from gymnasium.spaces import Box
 
 from agents.Agent import Agent
-from gym.ModelDynamics import ModelDynamics, LimitOrderModelDynamics
-from gym.helpers.generate_trajectory import generate_trajectory
+from gym_local.ModelDynamics import ModelDynamics, LimitOrderModelDynamics
+from gym_local.helpers.generate_trajectory import generate_trajectory
 from stochastic_processes.StochasticProcessModel import StochasticProcessModel
 from stochastic_processes.arrival_models import ArrivalModel, PoissonArrivalModel
 from stochastic_processes.fill_probability_models import FillProbabilityModel, ExponentialFillFunction
 from stochastic_processes.midprice_models import MidpriceModel, BrownianMotionMidpriceModel
 from stochastic_processes.price_impact_models import PriceImpactModel
-from gym.info_calculators import InfoCalculator
+from gym_local.info_calculators import InfoCalculator
 from rewards.RewardFunctions import RewardFunction, PnL
 
-from gym.index_names import CASH_INDEX, INVENTORY_INDEX, TIME_INDEX
+from gym_local.index_names import CASH_INDEX, INVENTORY_INDEX, TIME_INDEX
 
 
 class TradingEnvironment(gym.Env):
@@ -75,6 +75,7 @@ class TradingEnvironment(gym.Env):
         self.max_stock_price = max_stock_price or self.model_dynamics.midprice_model.max_value[0, 0]
         self.max_cash = max_cash or self._get_max_cash()
         self.info_calculator = info_calculator
+        self.last_arrivals = self.last_fills = None
         self._empty_infos = self._get_empty_infos()
         self.observation_space = self._get_observation_space()
         self.action_space = self.model_dynamics.get_action_space()
@@ -199,8 +200,54 @@ class TradingEnvironment(gym.Env):
         arrivals, fills = self.model_dynamics.get_arrivals_and_fills(action)
         if fills is not None:
             fills = self._remove_max_inventory_fills(fills)
+        if self.model_dynamics.fills_require_price_move:
+            return self._update_state_after_price_move(arrivals, fills, action)
+        self._record_step(arrivals, fills)
         self._update_agent_state(arrivals, fills, action)
         self._update_market_state(arrivals, fills, action)
+        self.model_dynamics.apply_self_impact(np.asarray(arrivals, dtype=float) * np.asarray(fills, dtype=float)
+                                              if fills is not None else np.zeros((self.num_trajectories, 2)))
+        return self.model_dynamics.state
+
+    def _record_step(self, arrivals, fills):
+        """Keep the last step's market order arrivals and own executions addressable from outside the step.
+
+        Neither is part of the observation, and neither should be: what an agent may condition on is a modelling
+        decision, not an environment one. But both are things a market maker genuinely observes -- trades print,
+        and one's own fills are known -- so an observation wrapper needs them to build features that stand in for
+        a latent factor. Either is None for dynamics that do not draw it.
+        """
+        self.last_arrivals = None if arrivals is None else np.asarray(arrivals, dtype=float).copy()
+        self.last_fills = None if fills is None else np.asarray(fills, dtype=float).copy()
+
+    def _update_state_after_price_move(self, arrivals, fills, action) -> np.ndarray:
+        """Ordering for fill mechanisms that are a function of the price move over the step.
+
+        The default ordering settles the agent first and then advances the market, which is correct as long as a
+        fill only depends on quantities known at the start of the step. An adverse fill does not: it happens
+        precisely because the price traded through a resting quote, so the move has to be drawn first. Here the
+        market is advanced, the executions are then resolved by the model dynamics, and cash and inventory settle
+        at the *pre-step* midprice, which is the price the order was quoted from.
+
+        The market update sees the non-adverse fills only. That is the intended causality rather than an
+        omission: in Lalor and Swishchuk (2024) an adverse fill is caused by the price move, it does not cause
+        it. Any process that feeds back off fills -- a price impact model -- would therefore need its own
+        treatment before being combined with this ordering.
+        """
+        midprice_before = self.model_dynamics.midprice.copy()
+        self._update_market_state(arrivals, fills, action)
+        market_orders = arrivals
+        arrivals, fills = self.model_dynamics.resolve_fills(arrivals, fills, action, midprice_before)
+        fills = self._remove_max_inventory_fills(fills)
+        # `resolve_fills` collapses `arrivals` to ones, so the observable market order flow is the pre-resolution
+        # draw while the executions are the combined ones.
+        self._record_step(market_orders, fills)
+        self.model_dynamics.execution_midprice = midprice_before
+        try:
+            self._update_agent_state(arrivals, fills, action)
+        finally:
+            self.model_dynamics.execution_midprice = None
+        self.model_dynamics.apply_self_impact(fills)
         return self.model_dynamics.state
 
     def _update_market_state(self, arrivals, fills, action):
@@ -241,14 +288,14 @@ class TradingEnvironment(gym.Env):
         return Box(low=np.float32(low), high=np.float32(high))
 
     def _get_normalised_observation_space(self):
-        # Linear normalisation of the gym.Box space so that the domain of the observation space is [-1,1].
+        # Linear normalisation of the gym_local.Box space so that the domain of the observation space is [-1,1].
         return gym.spaces.Box(
             low=-np.ones_like(self.observation_space.low, dtype=np.float32),
             high=np.ones_like(self.observation_space.high, dtype=np.float32),
         )
 
     def _get_normalised_action_space(self):
-        # Linear normalisation of the gym.Box space so that the domain of the action space is [-1,1].
+        # Linear normalisation of the gym_local.Box space so that the domain of the action space is [-1,1].
         return gym.spaces.Box(
             low=-np.ones_like(self.action_space.low, dtype=np.float32),
             high=np.ones_like(self.action_space.high, dtype=np.float32),
@@ -346,3 +393,9 @@ class TradingEnvironment(gym.Env):
         self.rng = np.random.default_rng(seed)
         for i, process in enumerate(self.stochastic_processes.values()):
             process.seed(seed + i + 1)
+        # The model dynamics own a generator too, and it was not being seeded here. Any mechanism that draws from
+        # it -- the queue-position thinning of `AdverseFillModelDynamics` is the first -- was therefore seeded
+        # from entropy, so two runs of the same seed diverged and every paired comparison silently lost its
+        # pairing. The offset keeps the stream distinct from the ones the processes were handed above.
+        self.model_dynamics.seed_ = seed
+        self.model_dynamics.rng = np.random.default_rng(None if seed is None else seed + 7919)

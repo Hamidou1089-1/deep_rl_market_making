@@ -1,10 +1,10 @@
 import gymnasium as gym
 import numpy as np
 import pandas as pd
-from gym.TradingEnvironment import TradingEnvironment
-from gym.index_names import CASH_INDEX, INVENTORY_INDEX, ASSET_PRICE_INDEX
+from gym_local.TradingEnvironment import TradingEnvironment
+from gym_local.index_names import CASH_INDEX, INVENTORY_INDEX, ASSET_PRICE_INDEX
 from agents.Agent import Agent
-from gym.helpers.generate_trajectory import generate_trajectory
+from gym_local.helpers.generate_trajectory import generate_trajectory
 import warnings
 
 

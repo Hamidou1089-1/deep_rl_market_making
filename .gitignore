@@ -29,3 +29,6 @@ dist/
 # directory, not just data/binance, so a stray file cannot slip into a commit.
 data/
 !data/README.md
+
+# Trained models: reproducible from scripts/train_robustness.py
+runs/

@@ -4,7 +4,7 @@ from unittest import TestCase, main
 import numpy as np
 
 from rewards.RewardFunctions import RunningInventoryPenalty, PnL, CjMmCriterion
-from gym.index_names import CASH_INDEX, INVENTORY_INDEX, TIME_INDEX, ASSET_PRICE_INDEX
+from gym_local.index_names import CASH_INDEX, INVENTORY_INDEX, TIME_INDEX, ASSET_PRICE_INDEX
 
 STEP_SIZE = 0.2
 TEST_CURRENT_STATE = np.array([[120, 2, 0.5, 100]])
@@ -82,7 +82,9 @@ class testCjMmCriterion(TestCase):
                     MOCK_OBSERVATIONS[i], MOCK_ACTIONS[i], MOCK_OBSERVATIONS[i + 1], is_terminal_step
                 )
             )
-        self.assertAlmostEqual(float(sum(cj_mm_rewards)), float(sum(target_rewards)), places=5)
+        # numpy 2 refuses to convert a size one array to a scalar, and each reward here is a length one
+        # trajectory vector; np.sum reduces across both the list and the trajectory axis.
+        self.assertAlmostEqual(float(np.sum(cj_mm_rewards)), float(np.sum(target_rewards)), places=5)
 
     def test_agreement_with_non_decontructed_version_nonzero_initial_inventory(self):
         target_reward_function = RunningInventoryPenalty(PER_STEP_INVENTORY_AVERSION, TERMINAL_INVENTORY_AVERSION)
@@ -106,7 +108,9 @@ class testCjMmCriterion(TestCase):
                     mock_observations[i], MOCK_ACTIONS[i], mock_observations[i + 1], is_terminal_step
                 )
             )
-        self.assertAlmostEqual(float(sum(cj_mm_rewards)), float(sum(target_rewards)), places=5)
+        # numpy 2 refuses to convert a size one array to a scalar, and each reward here is a length one
+        # trajectory vector; np.sum reduces across both the list and the trajectory axis.
+        self.assertAlmostEqual(float(np.sum(cj_mm_rewards)), float(np.sum(target_rewards)), places=5)
 
     def test_agreement_with_non_decontructed_version_partial_trajectory(self):
         target_reward_function = RunningInventoryPenalty(PER_STEP_INVENTORY_AVERSION, TERMINAL_INVENTORY_AVERSION)
@@ -132,7 +136,9 @@ class testCjMmCriterion(TestCase):
                     is_terminal_step,
                 )
             )
-        self.assertAlmostEqual(float(sum(cj_mm_rewards)), float(sum(target_rewards)), places=5)
+        # numpy 2 refuses to convert a size one array to a scalar, and each reward here is a length one
+        # trajectory vector; np.sum reduces across both the list and the trajectory axis.
+        self.assertAlmostEqual(float(np.sum(cj_mm_rewards)), float(np.sum(target_rewards)), places=5)
 
 
 if __name__ == "__main__":

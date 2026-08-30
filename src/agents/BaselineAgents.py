@@ -6,11 +6,11 @@ import warnings
 from scipy.linalg import expm
 
 from agents.Agent import Agent
-from gym.TradingEnvironment import TradingEnvironment
-from gym.index_names import INVENTORY_INDEX, TIME_INDEX, ASSET_PRICE_INDEX, CASH_INDEX, BID_INDEX, ASK_INDEX
+from gym_local.TradingEnvironment import TradingEnvironment
+from gym_local.index_names import INVENTORY_INDEX, TIME_INDEX, ASSET_PRICE_INDEX, CASH_INDEX, BID_INDEX, ASK_INDEX
 from rewards.RewardFunctions import CjMmCriterion, PnL
 from stochastic_processes.price_impact_models import PriceImpactModel, TemporaryAndPermanentPriceImpact
-from gym.ModelDynamics import LimitOrderModelDynamics, TradinghWithSpeedModelDynamics
+from gym_local.ModelDynamics import LimitOrderModelDynamics, TradinghWithSpeedModelDynamics
 
 class RandomAgent(Agent):
     def __init__(self, env: gym.Env, seed: int = None):

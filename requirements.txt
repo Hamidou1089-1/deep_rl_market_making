@@ -1,7 +1,7 @@
 # Pinned floors only; the authoritative list is pyproject.toml.
 #   pip install -e ".[dev]"
 #
-# The simulator now uses gymnasium (the legacy `gym` name is taken by src/gym).
+# The simulator now uses gymnasium (the legacy `gym_local` name is taken by src/gym_local).
 numpy>=1.24
 scipy>=1.11
 pandas>=2.0

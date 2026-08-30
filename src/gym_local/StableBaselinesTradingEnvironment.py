@@ -5,7 +5,7 @@ import numpy as np
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.common.vec_env.base_vec_env import VecEnvObs, VecEnvStepReturn, VecEnvIndices
 
-from gym.TradingEnvironment import TradingEnvironment
+from gym_local.TradingEnvironment import TradingEnvironment
 
 
 class StableBaselinesTradingEnvironment(VecEnv):
@@ -39,14 +39,18 @@ class StableBaselinesTradingEnvironment(VecEnv):
     def close(self) -> None:
         pass
 
+    # The `num_trajectories` "environments" seen by SB3 are all backed by the single vectorised
+    # TradingEnvironment, so an attribute lookup returns the same value once per requested index.
     def get_attr(self, attr_name: str, indices: VecEnvIndices = None) -> List[Any]:
-        pass
+        value = getattr(self.env, attr_name)
+        return [value for _ in self._get_indices(indices)]
 
     def set_attr(self, attr_name: str, value: Any, indices: VecEnvIndices = None) -> None:
-        pass
+        setattr(self.env, attr_name, value)
 
     def env_method(self, method_name: str, *method_args, indices: VecEnvIndices = None, **method_kwargs) -> List[Any]:
-        pass
+        method = getattr(self.env, method_name)
+        return [method(*method_args, **method_kwargs) for _ in self._get_indices(indices)]
 
     def env_is_wrapped(self, wrapper_class: Type[gym.Wrapper], indices: VecEnvIndices = None) -> List[bool]:
         return [False for _ in range(self.env.num_trajectories)]

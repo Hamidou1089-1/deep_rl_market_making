@@ -20,18 +20,22 @@ class FillProbabilityModel(StochasticProcessModel):
         super().__init__(min_value, max_value, step_size, terminal_time, initial_state, num_trajectories, seed)
 
     @abc.abstractmethod
-    def _get_fill_probabilities(self, depths: np.ndarray) -> np.ndarray:
+    def _get_fill_probabilities(self, depths: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         """Note that _get_fill_probabilities can return a 'probability' greater than one. However, this is not an issue
         for it is only use is in `get_hypothetical_fills` below."""
         pass
 
-    def get_fills(self, depths: np.ndarray) -> np.ndarray:
+    def get_fills(self, depths: np.ndarray, state: np.ndarray = None) -> np.ndarray:
+        """`state` is the full environment state *before* the current step, laid out as
+        [cash, inventory, time, <midprice model state>, <arrival model state>, ...]. Models whose fill probability
+        depends only on the quoted depth ignore it; state dependent models read their driving signal from it. It
+        defaults to None so that fill probability models remain usable standalone."""
         assert depths.shape == (self.num_trajectories, 2), (
             "Depths must be a numpy array of shape "
             + f"({self.num_trajectories},2). Instead it is a numpy array of shape {depths.shape}."
         )
         unif = self.rng.uniform(size=(self.num_trajectories, 2))
-        return unif < self._get_fill_probabilities(depths)
+        return unif < self._get_fill_probabilities(depths, state)
 
     @property
     @abc.abstractmethod
@@ -54,7 +58,7 @@ class ExponentialFillFunction(FillProbabilityModel):
             seed=seed,
         )
 
-    def _get_fill_probabilities(self, depths: np.ndarray) -> np.ndarray:
+    def _get_fill_probabilities(self, depths: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         return np.exp(-self.fill_exponent * depths)
 
     @property
@@ -80,7 +84,7 @@ class TriangularFillFunction(FillProbabilityModel):
             seed=seed,
         )
 
-    def _get_fill_probabilities(self, depths: np.ndarray) -> np.ndarray:
+    def _get_fill_probabilities(self, depths: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         return np.max(1 - np.max(depths, 0) / self.max_fill_depth, 0)
 
     @property
@@ -112,7 +116,7 @@ class PowerFillFunction(FillProbabilityModel):
             seed=seed,
         )
 
-    def _get_fill_probabilities(self, depths: np.ndarray) -> np.ndarray:
+    def _get_fill_probabilities(self, depths: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         return (1 + (self.fill_multiplier * np.max(depths, 0)) ** self.fill_exponent) ** -1
 
     @property
@@ -156,7 +160,7 @@ class ExogenousMmFillProbabilityModel(FillProbabilityModel):
             seed=seed,
         )
 
-    def _get_fill_probabilities(self, depths: np.ndarray) -> np.ndarray:
+    def _get_fill_probabilities(self, depths: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         return (depths > self.current_state) * self.base_fill_probability * np.exp(
             -self.fill_exponent * (depths - self.current_state)
         ) + (depths <= self.current_state)

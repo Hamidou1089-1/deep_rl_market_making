@@ -2,7 +2,7 @@ import abc
 from typing import Union
 
 import numpy as np
-from gym.index_names import CASH_INDEX, INVENTORY_INDEX, TIME_INDEX, ASSET_PRICE_INDEX
+from gym_local.index_names import CASH_INDEX, INVENTORY_INDEX, TIME_INDEX, ASSET_PRICE_INDEX
 
 
 class RewardFunction(metaclass=abc.ABCMeta):
@@ -133,7 +133,10 @@ class RunningInventoryPenalty(RewardFunction):
             self.pnl.calculate(current_state, action, next_state, is_terminal_step)
             - dt * self.per_step_inventory_aversion * next_state[:, INVENTORY_INDEX] ** self.inventory_exponent
             - self.terminal_inventory_aversion
-            * int(is_terminal_step)
+            # `is_terminal_step` is a scalar when the environment scores a whole batch at once and a per
+            # trajectory boolean array when a caller scores trajectories that terminate separately. Casting with
+            # numpy handles both; `int()` raises on an array of more than one element.
+            * np.asarray(is_terminal_step, dtype=float)
             * next_state[:, INVENTORY_INDEX] ** self.inventory_exponent
         )
 

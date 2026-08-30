@@ -6,9 +6,9 @@ import pandas as pd
 import seaborn as sns
 
 from agents.Agent import Agent
-from gym.TradingEnvironment import TradingEnvironment 
-from gym.index_names import CASH_INDEX, INVENTORY_INDEX, ASSET_PRICE_INDEX
-from gym.helpers.generate_trajectory import generate_trajectory
+from gym_local.TradingEnvironment import TradingEnvironment
+from gym_local.index_names import CASH_INDEX, INVENTORY_INDEX, ASSET_PRICE_INDEX
+from gym_local.helpers.generate_trajectory import generate_trajectory
 
 
 def plot_trajectory(env: gym.Env, agent: Agent, seed: int = None):

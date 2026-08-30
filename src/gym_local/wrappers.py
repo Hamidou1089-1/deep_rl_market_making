@@ -2,14 +2,31 @@ import gymnasium as gym
 
 import numpy as np
 
-from gym.index_names import INVENTORY_INDEX, TIME_INDEX
+from gym_local.index_names import INVENTORY_INDEX, TIME_INDEX
 
 from math import sqrt
 
 
-class ReduceStateSizeWrapper(gym.Wrapper):
+class ForwardingWrapper(gym.Wrapper):
+    """Base wrapper restoring the attribute forwarding removed in gymnasium 1.0.
+
+    Before gymnasium 1.0, ``gym.Wrapper.__getattr__`` forwarded any unknown attribute to the
+    wrapped environment. mbt_gym relies on it (``num_trajectories``, ``n_steps``, ``seed``,
+    ``reward_function``, ``model_dynamics``, ...), so we reinstate it here rather than sprinkling
+    ``env.unwrapped`` across the code base.
     """
-    :param env: (gym.Env) Gym environment that will be wrapped
+
+    def __getattr__(self, name: str):
+        # ``env`` and dunder/private names must never be forwarded: ``__getattr__`` is called
+        # before ``gym.Wrapper.__init__`` has set ``self.env``, which would recurse forever.
+        if name.startswith("_") or name == "env":
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        return getattr(self.env, name)
+
+
+class ReduceStateSizeWrapper(ForwardingWrapper):
+    """
+    :param env: (gym_local.Env) Gym environment that will be wrapped
     """
 
     def __init__(self, env, list_of_state_indices: list = [INVENTORY_INDEX, TIME_INDEX]):
@@ -43,9 +60,9 @@ class ReduceStateSizeWrapper(gym.Wrapper):
         return self.env.spec
 
 
-class NormaliseASObservation(gym.Wrapper):
+class NormaliseASObservation(ForwardingWrapper):
     """
-    :param env: (gym.Env) Gym environment that will be wrapped
+    :param env: (gym_local.Env) Gym environment that will be wrapped
     """
 
     def __init__(self, env):
@@ -76,9 +93,9 @@ class NormaliseASObservation(gym.Wrapper):
         return obs / self.normalisation_factor, reward, done, info
 
 
-class RemoveTerminalRewards(gym.Wrapper):
+class RemoveTerminalRewards(ForwardingWrapper):
     """
-    :param env: (gym.Env) Gym environment that will be wrapped
+    :param env: (gym_local.Env) Gym environment that will be wrapped
     """
 
     def __init__(self, env, num_final_steps: int = 5):
